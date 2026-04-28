@@ -1,0 +1,1535 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Wind durch Druckunterschiede</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f4f6;color:#111827}
+header{max-width:1180px;margin:auto;padding:22px 24px 8px}
+h1{margin:0;font-size:clamp(1.4rem,3vw,2.25rem)}
+.subtitle{margin-top:8px;color:#4b5563;line-height:1.45;max-width:980px}
+main{max-width:1180px;margin:auto;padding:12px 24px 30px;display:grid;grid-template-columns:1.25fr .75fr;gap:18px}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.card{background:white;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 10px 25px rgba(15,23,42,.08);overflow:hidden}
+canvas{display:block;width:100%;height:auto;background:linear-gradient(#fff,#f8fafc)}
+.controls{padding:14px 16px 18px;display:grid;gap:12px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+button{border:0;border-radius:999px;padding:10px 14px;color:white;background:#2563eb;font-weight:700;cursor:pointer}
+button.secondary{background:#475569}button.orange{background:#f97316}button.green{background:#16a34a}
+.slider{display:grid;grid-template-columns:190px 1fr 80px;gap:10px;align-items:center}
+input[type=range]{width:100%}
+aside{display:grid;gap:18px}
+.panel{padding:18px}
+h2{margin:0 0 10px;font-size:1.15rem}
+p,li{line-height:1.45}
+.readouts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.readout{background:#f8fafc;border:1px solid #e5e7eb;border-radius:14px;padding:12px}
+.label{color:#6b7280;font-size:.85rem}.value{font-size:1.25rem;font-weight:800;margin-top:2px}
+.hint{margin-top:12px;padding:12px;background:#eff6ff;border-left:5px solid #2563eb;border-radius:12px;line-height:1.45}
+.warn{margin-top:12px;padding:12px;background:#fff7ed;border-left:5px solid #f97316;border-radius:12px;line-height:1.45}
+.formula{margin:12px 0;padding:12px;background:#0f172a;color:white;border-radius:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.taskbox{border:1px dashed #f97316;border-radius:14px;padding:12px;background:#fff7ed}
+</style>
+</head>
+<body>
+<header>
+<h1>Wind als Teilchenstrom durch Druckunterschiede</h1>
+<div class="subtitle">
+Luftteilchen bewegen sich immer ungeordnet. Wird Luft über dem Boden erwärmt, steigt sie auf; am Boden entsteht dort niedrigerer Druck. Der Druckunterschied treibt den Wind an. Die Hintergrundteilchen zeigen: Überall bleibt Luft vorhanden; nur zusätzlich entsteht eine mittlere Strömung.
+</div>
+</header>
+
+<main>
+<section class="card">
+<canvas id="sim" width="1080" height="560"></canvas>
+<div class="controls">
+<div class="row">
+<button id="pause">Pause</button>
+<button id="reset" class="secondary">Zurücksetzen</button>
+<button id="heatLand" class="orange">Sonne stärker</button>
+<button id="coolLand" class="green">Sonne ausschalten</button>
+</div>
+
+<div class="row revealbar">
+  <span style="font-weight:700;color:#374151;margin-right:4px;">Deutung einblenden:</span>
+  <button id="showHeat" class="secondary" type="button">Tipp 1</button>
+  <button id="showRise" class="secondary" type="button">Tipp 2</button>
+  <button id="showWind" class="secondary" type="button">Tipp 3</button>
+<button id="tip4" class="secondary" type="button">Tipp 5</button>
+  <button id="hideHints" class="secondary" type="button">alle ausblenden</button>
+</div>
+
+<div class="slider">
+<label>Sonneneinstrahlung</label>
+<input id="heat" type="range" min="0" max="100" step="1" value="0">
+<output id="heatOut">0 %</output>
+</div>
+
+<div class="slider">
+<label>Simulationsgeschwindigkeit</label>
+<input id="simSpeed" type="range" min="0.2" max="3.0" step="0.1" value="1.0">
+<output id="simSpeedOut">1.0×</output>
+</div>
+</div>
+</section>
+
+<aside>
+<section class="card panel">
+<h2>Messwerte</h2>
+<div class="readouts">
+  <div class="readout">
+    <div class="label">Barometer</div>
+    <div id="pLeft" class="value">– hPa</div>
+  </div>
+  <div class="readout">
+    <div class="label">Ort Barometer</div>
+    <div id="pRight" class="value">–</div>
+  </div>
+
+  <div class="readout">
+    <div class="label">Thermometer</div>
+    <div id="tempValue" class="value">– °C</div>
+  </div>
+  <div class="readout">
+    <div class="label">Ort Thermometer</div>
+    <div id="tempPlace" class="value">–</div>
+  </div>
+
+  <div class="readout">
+    <div class="label">Windmesser</div>
+    <div id="windValue" class="value">– km/h</div>
+  </div>
+  <div class="readout">
+    <div class="label">Ort Windmesser</div>
+    <div id="windPlace" class="value">–</div>
+  </div>
+
+<div class="readout">
+  <div class="label">Wetter (Landesinneres)</div>
+  <div id="inlandWeather" class="value">–</div>
+</div>
+</div>
+<div id="message" class="hint"></div>
+
+</section>
+
+<section class="card panel">
+<h2><details style="margin-top:10px;">
+<summary style="cursor:pointer;font-weight:bold;">Tipp 4</summary>
+<div style="margin-top:8px;">
+<span style="font-weight:400;">Warme Luft dehnt sich aus, hat dadurch eine geringere Dichte und steigt nach oben.</span>
+</div>
+
+
+</details>
+
+
+</section>
+
+<section class="card panel">
+<details>
+<summary style="cursor:pointer;font-weight:700;font-size:1.15rem;">Tipp 6</summary>
+<div style="margin-top:12px;">
+<p>Kalte Luft kann weniger Wasserdampf aufnehmen als warme Luft. Beim Aufsteigen kühlt die Luft ab, daher kondensiert der Wasserdampf zu Wolken und es kann regnen.</p>
+<p>Wolken entstehen hier auf der Tiefdruckseite: Dort steigt Luft auf, kühlt ab und Wasserdampf kann kondensieren. Auf der Hochdruckseite sinkt Luft eher ab; Wolken lösen sich dort eher auf.</p>
+</div>
+</details>
+</section>
+
+
+
+<section class="card panel">
+<details>
+<summary style="cursor:pointer;font-weight:700;font-size:1.15rem;">Tipp 7</summary>
+<div style="margin-top:12px;">
+<div class="formula">Bodenwind: höherer Druck → niedrigerer Druck</div>
+<div class="warn"><strong>Wichtig:</strong> Das Tiefdruckgebiet saugt nicht. Die Luft wird durch den höheren Druck auf der Hochdruckseite in Richtung des niedrigeren Drucks gedrängt.</div>
+</div>
+</details>
+</section>
+
+<section class="card panel">
+<details>
+<summary style="cursor:pointer;font-weight:700;font-size:1.15rem;">Tipp 8</summary>
+<div style="margin-top:12px;">
+<p>Spezifische Wärmekapazität:</p>
+<p>Wasser: c ≈ 4,2 <span style="display:inline-block; vertical-align:middle; text-align:center; line-height:1.05;">
+<span style="display:block; border-bottom:1px solid #111; padding:0 4px;">kJ</span>
+<span style="display:block; padding:0 4px;">kg · K</span>
+</span></p>
+<p>Boden: c ≈ 1,2 <span style="display:inline-block; vertical-align:middle; text-align:center; line-height:1.05;">
+<span style="display:block; border-bottom:1px solid #111; padding:0 4px;">kJ</span>
+<span style="display:block; padding:0 4px;">kg · K</span>
+</span></p>
+</div>
+</details>
+</section>
+
+
+</aside>
+</main>
+
+<script>
+function toggleTip(id){
+  const el=document.getElementById(id);
+  el.style.display = (el.style.display==="none") ? "block" : "none";
+}
+
+const canvas=document.getElementById("sim");
+const ctx=canvas.getContext("2d");
+
+
+const pauseBtn=document.getElementById("pause");
+const resetBtn=document.getElementById("reset");
+const heatLandBtn=document.getElementById("heatLand");
+const coolLandBtn=document.getElementById("coolLand");
+const showHeatBtn=document.getElementById("showHeat");
+const showRiseBtn=document.getElementById("showRise");
+const showWindBtn=document.getElementById("showWind");
+const hideHintsBtn=document.getElementById("hideHints");
+const tip4Btn=document.getElementById("tip4");
+const tip5Btn=document.getElementById("tip5");
+const heatSlider=document.getElementById("heat");
+const simSpeedSlider=document.getElementById("simSpeed");
+
+const heatOut=document.getElementById("heatOut");
+const simSpeedOut=document.getElementById("simSpeedOut");
+const pLeftEl=document.getElementById("pLeft");
+const pRightEl=document.getElementById("pRight");
+const tRightEl=document.getElementById("tRight");
+const windDirEl=document.getElementById("windDir");
+const messageEl=document.getElementById("message");
+const tempValueEl=document.getElementById("tempValue");
+const tempPlaceEl=document.getElementById("tempPlace");
+const windValueEl=document.getElementById("windValue");
+const windPlaceEl=document.getElementById("windPlace");
+
+let running=true;
+let particles=[];
+let backgroundParticles=[];
+let simSpeed=1;
+let simAccumulator=0;
+let barometer={x:990,y:300,r:24,dragging:false};
+let thermometer={x:990,y:230,r:24,dragging:false};
+let anemometer={x:990,y:370,r:24,dragging:false};
+let tipHeat=false;
+let tipRise=false;
+let tipWind=false;
+let tip4=false;
+let tip5=false;
+
+function rand(min,max){return min+Math.random()*(max-min);}
+
+function scene(){
+return {skyX:70,skyY:70,skyW:860,skyH:360,groundY:430,mid:500,leftCenter:285,rightCenter:715};
+}
+
+function heat(){return Number(heatSlider.value);}
+function pressureLeft(){
+return 1013 + heat()*0.15; // bis ca. 1028 hPa: kräftiges Hoch in Mitteleuropa
+}       // bis ca. 1028 hPa
+function pressureRight(){
+return 1013 - heat()*0.38; // bis ca. 975 hPa: kräftiges Sturm-/Tiefdruckgebiet
+}      // bis ca. 975 hPa
+function pressureDiff(){return pressureLeft()-pressureRight();}
+
+function weatherLabel(){
+const d=pressureDiff();
+const pT=pressureRight();
+if(d<5) return "ruhig";
+if(d<15) return "leichter Wind";
+if(d<30) return "windig";
+if(d<45) return "starker Wind";
+if(pT<=985) return "Sturmtief";
+return "stürmisch";
+}
+
+function localPressureAt(x,y){
+const s=scene();
+const pH=pressureLeft();
+const pT=pressureRight();
+const diff=pH-pT;
+
+if(x>s.skyX+s.skyW+10) return 1013;
+if(diff<3) return 1013;
+
+// normalize x
+const nx=(x-s.skyX)/s.skyW;
+
+// Gaussian-like peaks: High at left center, low at right center
+const highCenter=0.25;
+const lowCenter=0.75;
+
+// width of regions
+const sigma=0.18;
+
+// gaussian functions
+function gauss(x,mu,s){return Math.exp(-((x-mu)*(x-mu))/(2*s*s));}
+
+const highInfluence=gauss(nx,highCenter,sigma);
+const lowInfluence=gauss(nx,lowCenter,sigma);
+
+// Hoch und Tief werden getrennt skaliert:
+// Hochzentrum bis ca. 1028 hPa, Tiefzentrum bis ca. 975 hPa.
+const highAmplitude = pH - 1013;
+const lowAmplitude = 1013 - pT;
+
+let p = 1013 + highInfluence*highAmplitude - lowInfluence*lowAmplitude;
+
+// vertical weakening with height
+const heightFactor=Math.max(0.2,Math.min(1,(y-s.skyY)/((s.groundY-8)-s.skyY)));
+p = 1013 + (p-1013)*heightFactor;
+
+return p;
+}
+
+function barometerRegion(){
+const s=scene();
+if(barometer.x>s.skyX+s.skyW+10)return "geparkt";
+if(barometer.y>s.groundY-110)return barometer.x<s.mid?"Boden links":"Boden rechts";
+return barometer.x<s.mid?"Höhe links":"Höhe rechts";
+}
+
+function localTemperatureAt(x,y){
+const s=scene();
+if(x>s.skyX+s.skyW+10)return 20;
+
+const base=17;
+
+// Temperaturmodell:
+// Meer bleibt kühler.
+// Ab Strand/Land nimmt die Erwärmung bis zum Tiefdruckzentrum zu.
+// Rechts vom Tief bleibt die Temperatur auf dem Maximalwert und steigt nicht weiter,
+// sonst würde didaktisch dort das Tief entstehen.
+const seaWidth=s.skyW/3;
+const beachWidth=s.skyW/6;
+const landStart=s.skyX+seaWidth+beachWidth;
+
+// Tiefzentrum passend zur eingezeichneten T-Position
+const lowCenterX=720;
+
+// Aufwärmfaktor: links vom Land 0, am Tiefzentrum 1, rechts davon weiterhin 1.
+let landHeating=0;
+if(x>=landStart){
+  landHeating=(x-landStart)/(lowCenterX-landStart);
+  landHeating=Math.max(0,Math.min(1,landHeating));
+}
+
+// Erwärmung ist bodennah stärker als in der Höhe.
+const groundFactor=Math.max(0,Math.min(1,(y-(s.skyY+80))/(s.groundY-(s.skyY+80))));
+const sunWarm=heat()*0.22*landHeating*groundFactor;
+
+// mit der Höhe wird es kühler
+const heightCooling=(s.groundY-y)*0.018;
+
+return base+sunWarm-heightCooling;
+}
+
+function thermometerRegion(){
+const s=scene();
+if(thermometer.x>s.skyX+s.skyW+10)return "geparkt";
+if(thermometer.y>s.groundY-110){
+  return thermometer.x<s.mid ? "Boden links" : "Boden rechts";
+}
+return thermometer.x<s.mid ? "Höhe links" : "Höhe rechts";
+}
+
+function localWindAt(x,y){
+const s=scene();
+if(x>s.skyX+s.skyW+10)return {speed:0,dir:"–"};
+
+const diff=pressureDiff();
+const strength=Math.max(0,Math.min(1,(diff-3)/55));
+
+const groundCenter=382;
+const groundBand=Math.exp(-Math.pow((y-groundCenter)/85,2));
+const upCenterX=755;
+const upBand=Math.exp(-Math.pow((x-upCenterX)/115,2));
+
+let vx=0;
+let vy=0;
+
+// Bodennah: Wind nach rechts
+if(x>180 && x<720){
+  vx += 38*strength*groundBand;
+}
+
+// Rechts: Aufwind
+if(y>160 && y<390){
+  vy -= 28*strength*upBand;
+}
+
+// Kleine Zusatzinformation aus den tatsächlichen Teilchen in der Nähe
+let sumVx=0, sumVy=0, count=0;
+const r2=55*55;
+
+const allParticles = (typeof backgroundParticles !== "undefined")
+  ? backgroundParticles.concat(particles)
+  : particles;
+
+for(const p of allParticles){
+  const dx=p.x-x;
+  const dy=p.y-y;
+  if(dx*dx+dy*dy<r2){
+    sumVx+=p.vx;
+    sumVy+=p.vy;
+    count++;
+  }
+}
+
+if(count>0){
+  vx += sumVx/count*12;
+  vy += sumVy/count*12;
+}
+
+const speed=Math.sqrt(vx*vx+vy*vy);
+
+let dir="kaum";
+if(speed>=3){
+  if(Math.abs(vx)>Math.abs(vy)){
+    dir=vx>=0 ? "→" : "←";
+  }else{
+    dir=vy>=0 ? "↓" : "↑";
+  }
+}
+
+return {speed:speed,dir:dir};
+}
+
+function anemometerRegion(){
+const s=scene();
+if(anemometer.x>s.skyX+s.skyW+10)return "geparkt";
+if(anemometer.y>s.groundY-110){
+  return anemometer.x<s.mid ? "Boden links" : "Boden rechts";
+}
+return anemometer.x<s.mid ? "Höhe links" : "Höhe rechts";
+}
+
+function newParticle(){
+const s=scene();
+const speed=rand(0.05,0.18);
+const angle=rand(0,Math.PI*2);
+return {
+x:rand(s.skyX+15,s.skyX+s.skyW-15),
+y:rand(s.skyY+15,s.groundY-20),
+vx:Math.cos(angle)*speed,
+vy:Math.sin(angle)*speed,
+// individuelle Empfindlichkeit gegenüber Wind: manche Teilchen werden stärker mitgenommen,
+// andere bleiben eher ungeordnet. Dadurch entsteht keine starre Stromlinie.
+windAffinity:rand(0.25,1.0)
+};
+}
+
+function newBackgroundParticle(){
+const s=scene();
+const speed=rand(0.025,0.09);
+const angle=rand(0,Math.PI*2);
+return {
+x:rand(s.skyX+15,s.skyX+s.skyW-15),
+y:rand(s.skyY+15,s.groundY-20),
+vx:Math.cos(angle)*speed,
+vy:Math.sin(angle)*speed
+};
+}
+
+function reset(){
+particles=[];
+backgroundParticles=[];
+
+// Hintergrund-Luft: füllt dauerhaft den gesamten Luftraum.
+// Sie sorgt dafür, dass nie der Eindruck eines Vakuums entsteht.
+for(let i=0;i<900;i++)backgroundParticles.push(newBackgroundParticle());
+
+// Vordergrund-Teilchen: zeigen die mittlere Windströmung.
+for(let i=0;i<420;i++)particles.push(newParticle());
+}
+
+function flowPoint(phase,lane){
+const s=scene();
+let x,y;
+if(phase<0.35){
+const t=phase/0.35;
+x=235+t*500;
+y=386+lane*0.55+Math.sin(t*Math.PI)*8;
+}else if(phase<0.58){
+const t=(phase-0.35)/0.23;
+x=760+lane*0.45;
+y=380-t*190;
+}else if(phase<0.83){
+const t=(phase-0.58)/0.25;
+x=760-t*470;
+y=145+lane*0.45;
+}else{
+const t=(phase-0.83)/0.17;
+x=290+lane*0.45;
+y=160+t*220;
+}
+return {x:x,y:y};
+}
+
+function moveBackgroundParticle(p){
+const s=scene();
+
+// sehr langsame, ungeordnete Gasbewegung
+p.vx+=rand(-0.006,0.006);
+p.vy+=rand(-0.006,0.006);
+p.vx=Math.max(-0.16,Math.min(0.16,p.vx));
+p.vy=Math.max(-0.16,Math.min(0.16,p.vy));
+
+p.x+=p.vx;
+p.y+=p.vy;
+
+// kontinuierliche Randbehandlung:
+// Teilchen werden nur zurückgelenkt, nicht neu erzeugt oder umgesetzt.
+if(p.x<s.skyX+8){
+  p.x=s.skyX+8;
+  p.vx=Math.abs(p.vx)+rand(0.01,0.04);
+  p.vy+=rand(-0.04,0.04);
+}
+if(p.x>s.skyX+s.skyW-8){
+  p.x=s.skyX+s.skyW-8;
+  p.vx=-Math.abs(p.vx)-rand(0.01,0.04);
+  p.vy+=rand(-0.04,0.04);
+}
+if(p.y<s.skyY+8){
+  p.y=s.skyY+8;
+  p.vy=Math.abs(p.vy)+rand(0.01,0.04);
+  p.vx+=rand(-0.04,0.04);
+}
+if(p.y>s.groundY-8){
+  p.y=s.groundY-8;
+  p.vy=-Math.abs(p.vy)-rand(0.01,0.04);
+  p.vx+=rand(-0.04,0.04);
+}
+}
+
+function moveParticle(p){
+const s=scene();
+const diff=pressureDiff();
+const strength=Math.max(0,Math.min(1,(diff-3)/55));
+
+// Grundbewegung: Luftteilchen bewegen sich immer ungeordnet.
+p.vx+=rand(-0.020,0.020);
+p.vy+=rand(-0.020,0.020);
+
+// Breite, durchlässige Strömungszonen.
+// Kein Teilchen wird dauerhaft in eine Bahn gezwungen; alle bleiben Teil eines Gases.
+
+// Bodenwindzone: breit, bodennah, von links nach rechts.
+const groundCenter=382;
+const groundBand=Math.exp(-Math.pow((p.y-groundCenter)/78,2));
+const inGroundX = p.x>180 && p.x<720;
+
+// Aufwindzone: rechts, breit, nach oben.
+const upCenterX=755;
+const upBand=Math.exp(-Math.pow((p.x-upCenterX)/105,2));
+const inUpY = p.y>165 && p.y<385;
+
+// Höhenströmung: oben, breit, von rechts nach links.
+const upperCenter=135;
+const upperBand=Math.exp(-Math.pow((p.y-upperCenter)/82,2));
+const inUpperX = p.x>250 && p.x<820;
+
+// Absinkbereich links: breit, nach unten.
+const downCenterX=285;
+const downBand=Math.exp(-Math.pow((p.x-downCenterX)/115,2));
+const inDownY = p.y>130 && p.y<360;
+
+if(strength>0){
+  if(inGroundX){
+    const a=strength*groundBand*p.windAffinity;
+    p.vx += 0.030*a;
+    p.vy += (groundCenter-p.y)*0.00016*a;
+  }
+
+  if(inUpY){
+    const a=strength*upBand*p.windAffinity;
+    p.vy -= 0.032*a;
+    p.vx += (upCenterX-p.x)*0.00014*a;
+  }
+
+  if(inUpperX){
+    const a=strength*upperBand*p.windAffinity;
+    p.vx -= 0.025*a;
+    p.vy += (upperCenter-p.y)*0.00014*a;
+  }
+
+  if(inDownY){
+    const a=strength*downBand*p.windAffinity;
+    p.vy += 0.020*a;
+    p.vx += (downCenterX-p.x)*0.00012*a;
+  }
+
+  // Turbulente Durchmischung: Teilchen können in Windzonen hinein- und hinausdiffundieren.
+  p.vx += rand(-0.025,0.025)*strength;
+  p.vy += rand(-0.025,0.025)*strength;
+}
+
+// Leichte Dämpfung verhindert ballartiges "Hin- und Herschießen".
+p.vx*=0.992;
+p.vy*=0.992;
+
+// Geschwindigkeit begrenzen
+const maxV=0.75+0.40*strength;
+p.vx=Math.max(-maxV,Math.min(maxV,p.vx));
+p.vy=Math.max(-maxV,Math.min(maxV,p.vy));
+
+p.x+=p.vx;
+p.y+=p.vy;
+
+// Kontinuierliche Randbehandlung:
+// Teilchen bleiben erhalten und werden nur weich in den Luftraum zurückgelenkt.
+// Kein Teleportieren, kein Verschwinden, kein Auftauchen.
+if(p.x<s.skyX+8){
+  p.x=s.skyX+8;
+  p.vx=Math.abs(p.vx)*0.55 + rand(0.01,0.06);
+  p.vy+=rand(-0.06,0.06);
+}
+if(p.x>s.skyX+s.skyW-8){
+  p.x=s.skyX+s.skyW-8;
+  p.vx=-Math.abs(p.vx)*0.55 - rand(0.01,0.06);
+  p.vy+=rand(-0.06,0.06);
+}
+if(p.y<s.skyY+8){
+  p.y=s.skyY+8;
+  p.vy=Math.abs(p.vy)*0.55 + rand(0.01,0.06);
+  p.vx+=rand(-0.06,0.06);
+}
+if(p.y>s.groundY-8){
+  p.y=s.groundY-8;
+  p.vy=-Math.abs(p.vy)*0.55 - rand(0.01,0.06);
+  p.vx+=rand(-0.06,0.06);
+}
+}
+
+function roundRect(x,y,w,h,r){
+ctx.beginPath();
+ctx.moveTo(x+r,y);
+ctx.arcTo(x+w,y,x+w,y+h,r);
+ctx.arcTo(x+w,y+h,x,y+h,r);
+ctx.arcTo(x,y+h,x,y,r);
+ctx.arcTo(x,y,x+w,y,r);
+ctx.closePath();
+}
+
+function draw(){
+const s=scene();
+ctx.clearRect(0,0,canvas.width,canvas.height);
+drawBackground(s);
+drawSun(s);
+drawPressureSymbols(s);
+drawSoftStreamBands(s);
+drawArrows(s);
+drawParticles(s);
+drawBarometer();
+drawThermometer();
+drawWindmesser();
+drawExtraTips();
+drawLabels();
+updateReadouts();
+}
+
+function drawBackground(s){
+ctx.save();
+
+// Himmel
+const skyGrad=ctx.createLinearGradient(0,s.skyY,0,s.groundY);
+skyGrad.addColorStop(0,"#dbeafe");
+skyGrad.addColorStop(1,"#f8fafc");
+ctx.fillStyle=skyGrad;
+ctx.fillRect(s.skyX,s.skyY,s.skyW,s.skyH);
+ctx.strokeStyle="#cbd5e1";
+ctx.lineWidth=2;
+ctx.strokeRect(s.skyX,s.skyY,s.skyW,s.skyH);
+
+// Wolken/Regen werden simuliert und erscheinen nur bei Druckunterschied.
+const d=pressureDiff();
+if(d>=12){
+  const cloudOpacity=Math.min(0.78,0.32+d/95);
+  drawCloud(665,125,0.82,cloudOpacity);
+  drawCloud(760,105,0.92,cloudOpacity);
+  drawCloud(835,155,0.72,cloudOpacity*0.9);
+}
+if(d>40){
+  drawRain(610,170,280,155,d);
+}
+
+// Saubere Landschaft: Meer 1/3, Strand 1/6, Land 1/2
+const seaWidth=s.skyW/3;
+const beachWidth=s.skyW/6;
+const landWidth=s.skyW-seaWidth-beachWidth;
+const seaX=s.skyX;
+const beachX=s.skyX+seaWidth;
+const landX=s.skyX+seaWidth+beachWidth;
+
+// Meer
+ctx.fillStyle="#60a5fa";
+ctx.fillRect(seaX,s.groundY,seaWidth,75);
+
+// leichte Wellen
+ctx.strokeStyle="rgba(30,64,175,.45)";
+ctx.lineWidth=2;
+for(let i=0;i<6;i++){
+  const y=s.groundY+15+i*9;
+  ctx.beginPath();
+  for(let x=seaX+18;x<seaX+seaWidth-20;x+=34){
+    ctx.moveTo(x,y);
+    ctx.quadraticCurveTo(x+8,y-4,x+16,y);
+    ctx.quadraticCurveTo(x+24,y+4,x+32,y);
+  }
+  ctx.stroke();
+}
+
+// Fische im Meer, nur schematisch
+drawFish(seaX+seaWidth*0.28,s.groundY+36,0.9);
+drawFish(seaX+seaWidth*0.48,s.groundY+52,0.75);
+drawFish(seaX+seaWidth*0.67,s.groundY+31,0.65);
+
+// Strand
+ctx.fillStyle="#fde68a";
+ctx.fillRect(beachX,s.groundY,beachWidth,75);
+
+// schematische Krabbe im Sand
+drawCrab(beachX+beachWidth*0.50,s.groundY+48,0.72);
+
+// kleine Küstenlinie
+ctx.strokeStyle="rgba(255,255,255,.75)";
+ctx.lineWidth=3;
+ctx.beginPath();
+ctx.moveTo(beachX-6,s.groundY+6);
+ctx.bezierCurveTo(beachX+25,s.groundY+14,beachX+60,s.groundY+8,beachX+beachWidth+10,s.groundY+15);
+ctx.stroke();
+
+// Land
+ctx.fillStyle="#86efac";
+ctx.fillRect(landX,s.groundY,landWidth,75);
+
+// Erwärmter Landbereich als transparente Simulationsebene
+const heatAlpha=0.03+heat()/100*0.22;
+ctx.fillStyle=`rgba(249,115,22,${heatAlpha})`;
+ctx.fillRect(landX,s.groundY,landWidth,75);
+
+// Bodenlinie
+ctx.fillStyle="#1e40af";
+ctx.fillRect(seaX,s.groundY,seaWidth,6);
+ctx.fillStyle="#ca8a04";
+ctx.fillRect(beachX,s.groundY,beachWidth,6);
+ctx.fillStyle="#65a30d";
+ctx.fillRect(landX,s.groundY,landWidth,10);
+
+// Baum rechts auf dem Land
+drawTree(s.skyX+s.skyW-32,s.groundY);
+
+
+// Messgeräte-Ablage rechts
+ctx.fillStyle="#f8fafc";
+ctx.strokeStyle="#cbd5e1";
+ctx.lineWidth=2;
+roundRect(s.skyX+s.skyW+25,150,120,260,16);
+ctx.fill();
+ctx.stroke();
+
+ctx.fillStyle="#111827";
+ctx.font="bold 14px system-ui";
+ctx.textAlign="center";
+ctx.fillText("Messgeräte-",s.skyX+s.skyW+85,178);
+ctx.fillText("Ablage",s.skyX+s.skyW+85,196);
+ctx.font="12px system-ui";
+ctx.fillStyle="#64748b";
+ctx.fillText("Thermometer",s.skyX+s.skyW+85,232);
+ctx.fillText("Barometer",s.skyX+s.skyW+85,302);
+ctx.fillText("Windmesser",s.skyX+s.skyW+85,372);
+
+ctx.restore();
+}
+
+function drawCloud(x,y,scale,opacity){
+ctx.save();
+ctx.scale(scale,scale);
+ctx.translate(x/scale,y/scale);
+ctx.fillStyle="rgba(100,116,139,"+opacity+")";
+ctx.beginPath();
+ctx.arc(-28,8,22,0,Math.PI*2);
+ctx.arc(0,0,30,0,Math.PI*2);
+ctx.arc(34,10,22,0,Math.PI*2);
+ctx.arc(8,14,26,0,Math.PI*2);
+ctx.fill();
+ctx.restore();
+}
+
+function drawRain(x,y,w,h,diff){
+ctx.save();
+const intensity=Math.min(1,(diff-40)/35);
+ctx.strokeStyle="rgba(37,99,235,"+(0.35+0.35*intensity)+")";
+ctx.lineWidth=1.5;
+const drops=Math.floor(18+45*intensity);
+for(let i=0;i<drops;i++){
+const rx=x+Math.random()*w;
+const ry=y+Math.random()*h;
+ctx.beginPath();
+ctx.moveTo(rx,ry);
+ctx.lineTo(rx-5,ry+15);
+ctx.stroke();
+}
+ctx.restore();
+}
+
+function drawCrab(x,y,scale){
+ctx.save();
+ctx.translate(x,y);
+ctx.scale(scale,scale);
+
+// Körper
+ctx.fillStyle="#ef4444";
+ctx.strokeStyle="#7f1d1d";
+ctx.lineWidth=2;
+ctx.beginPath();
+ctx.ellipse(0,0,14,9,0,0,Math.PI*2);
+ctx.fill();
+ctx.stroke();
+
+// Augenstiele
+ctx.strokeStyle="#7f1d1d";
+ctx.lineWidth=2;
+ctx.beginPath();
+ctx.moveTo(-5,-8);
+ctx.lineTo(-8,-17);
+ctx.moveTo(5,-8);
+ctx.lineTo(8,-17);
+ctx.stroke();
+
+ctx.fillStyle="#111827";
+ctx.beginPath();
+ctx.arc(-8,-18,2,0,Math.PI*2);
+ctx.arc(8,-18,2,0,Math.PI*2);
+ctx.fill();
+
+// Beine
+ctx.strokeStyle="#7f1d1d";
+ctx.lineWidth=2;
+for(const side of [-1,1]){
+  for(let i=0;i<3;i++){
+    const yy=-2+i*4;
+    ctx.beginPath();
+    ctx.moveTo(side*10,yy);
+    ctx.lineTo(side*(18+i*2),yy+side*0);
+    ctx.lineTo(side*(23+i*2),yy+5);
+    ctx.stroke();
+  }
+}
+
+// Scheren
+for(const side of [-1,1]){
+  ctx.strokeStyle="#7f1d1d";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(side*10,-5);
+  ctx.lineTo(side*24,-14);
+  ctx.stroke();
+
+  ctx.fillStyle="#ef4444";
+  ctx.beginPath();
+  ctx.arc(side*29,-17,6,0,Math.PI*2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+ctx.restore();
+}
+
+function drawFish(x,y,scale){
+ctx.save();
+ctx.translate(x,y);
+ctx.scale(scale,scale);
+ctx.strokeStyle="#1e3a8a";
+ctx.fillStyle="rgba(191,219,254,.65)";
+ctx.lineWidth=2;
+
+ctx.beginPath();
+ctx.ellipse(0,0,15,7,0,0,Math.PI*2);
+ctx.fill();
+ctx.stroke();
+
+ctx.beginPath();
+ctx.moveTo(-15,0);
+ctx.lineTo(-27,-8);
+ctx.lineTo(-27,8);
+ctx.closePath();
+ctx.fill();
+ctx.stroke();
+
+ctx.fillStyle="#1e3a8a";
+ctx.beginPath();
+ctx.arc(6,-2,1.8,0,Math.PI*2);
+ctx.fill();
+
+ctx.restore();
+}
+
+function drawTree(x,groundY){
+ctx.save();
+ctx.fillStyle="#7c2d12";
+ctx.fillRect(x-6,groundY-54,12,54);
+ctx.fillStyle="#15803d";
+ctx.beginPath();ctx.arc(x,groundY-68,28,0,Math.PI*2);ctx.fill();
+ctx.beginPath();ctx.arc(x-22,groundY-52,22,0,Math.PI*2);ctx.fill();
+ctx.beginPath();ctx.arc(x+22,groundY-52,22,0,Math.PI*2);ctx.fill();
+ctx.restore();
+}
+
+function drawPerson(x,groundY){
+ctx.save();
+ctx.strokeStyle="#111827";
+ctx.lineWidth=4;
+ctx.fillStyle="#111827";
+ctx.beginPath();ctx.arc(x,groundY-58,8,0,Math.PI*2);ctx.fill();
+ctx.beginPath();
+ctx.moveTo(x,groundY-50);ctx.lineTo(x,groundY-25);
+ctx.moveTo(x,groundY-42);ctx.lineTo(x-14,groundY-34);
+ctx.moveTo(x,groundY-42);ctx.lineTo(x+14,groundY-34);
+ctx.moveTo(x,groundY-25);ctx.lineTo(x-12,groundY);
+ctx.moveTo(x,groundY-25);ctx.lineTo(x+12,groundY);
+ctx.stroke();
+ctx.restore();
+}
+
+function drawSun(s){
+if(heat()<=0)return;
+
+ctx.save();
+
+// Sonne mittiger über der Szene
+const sunX=600;
+const sunY=60;
+
+// breiter Lichtkegel auf Meer, Strand und Land
+const alpha=0.08+heat()/100*0.30;
+ctx.fillStyle=`rgba(253,224,71,${alpha})`;
+ctx.beginPath();
+ctx.moveTo(sunX,sunY+8);
+ctx.lineTo(s.skyX+170,s.groundY);
+ctx.lineTo(s.skyX+s.skyW-90,s.groundY);
+ctx.closePath();
+ctx.fill();
+
+// Sonnenstrahlen
+ctx.strokeStyle="#facc15";
+ctx.lineWidth=3;
+for(let a=0;a<Math.PI*2;a+=Math.PI/6){
+  ctx.beginPath();
+  ctx.moveTo(sunX+34*Math.cos(a),sunY+34*Math.sin(a));
+  ctx.lineTo(sunX+50*Math.cos(a),sunY+50*Math.sin(a));
+  ctx.stroke();
+}
+
+// Sonne
+ctx.fillStyle="#fde047";
+ctx.beginPath();
+ctx.arc(sunX,sunY,28,0,Math.PI*2);
+ctx.fill();
+ctx.strokeStyle="#f59e0b";
+ctx.lineWidth=2;
+ctx.stroke();
+
+// Beschriftung nur bei Tipp 1 bzw. wenn altes annotationLevel aktiv wäre
+const showHeatText = (typeof tipHeat !== "undefined") ? tipHeat : (typeof annotationLevel !== "undefined" && annotationLevel>=1);
+if(showHeatText){
+  ctx.fillStyle="#92400e";
+  ctx.font="bold 15px system-ui";
+  ctx.textAlign="center";
+  ctx.fillText("Sonne",sunX,sunY+52);
+
+  // neue didaktische Beschriftung, nicht über Baum/Tiefdruck
+  ctx.fillStyle="rgba(255,255,255,.90)";
+  roundRect(430,230,260,38,9);
+  ctx.fill();
+
+  ctx.fillStyle="#92400e";
+  ctx.font="bold 14px system-ui";
+  ctx.fillText("erwärmt Land stärker als Gewässer",560,255);
+}
+
+ctx.restore();
+}
+
+function drawPressureSymbols(s){
+const diff=pressureDiff();
+if(diff<5){
+ctx.save();
+ctx.fillStyle="#475569";
+ctx.font="bold 18px system-ui";
+ctx.textAlign="center";
+ctx.fillText("",500,250);
+ctx.font="14px system-ui";
+ctx.fillText("",500,274);
+ctx.restore();
+return;
+}
+
+ctx.save();
+
+// Hochdruckgebiet links: Symbol, aber kein fester Zahlenwert.
+// Die Werte sollen mit dem Barometer erkundet werden.
+ctx.strokeStyle="rgba(37,99,235,.55)";
+ctx.lineWidth=2;
+for(let i=0;i<3;i++){
+ctx.beginPath();
+ctx.ellipse(260,350,95+i*18,38+i*10,0,0,Math.PI*2);
+ctx.stroke();
+}
+ctx.fillStyle="#1d4ed8";
+ctx.font="bold 34px system-ui";
+ctx.textAlign="center";
+ctx.fillText("H",260,356);
+
+// Tiefdruckgebiet rechts: Symbol, aber kein fester Zahlenwert.
+ctx.strokeStyle="rgba(220,38,38,.55)";
+for(let i=0;i<3;i++){
+ctx.beginPath();
+ctx.ellipse(720,350,95+i*18,38+i*10,0,0,Math.PI*2);
+ctx.stroke();
+}
+ctx.fillStyle="#b91c1c";
+ctx.font="bold 34px system-ui";
+ctx.fillText("T",720,356);
+
+if(diff>45){
+ctx.fillStyle="rgba(255,255,255,.90)";
+roundRect(785,405,110,28,8);
+ctx.fill();
+ctx.fillStyle="rgba(220,38,38,.95)";
+ctx.font="bold 17px system-ui";
+ctx.fillText("Sturmtief",840,425);
+}
+
+ctx.restore();
+}
+
+function drawSoftStreamBands(s){
+const diff=pressureDiff();
+if(diff<10)return;
+ctx.save();
+ctx.globalAlpha=Math.min(0.08,0.018+diff/850);
+ctx.lineCap="round";
+
+if(tipWind){
+ctx.strokeStyle="#2563eb";
+ctx.lineWidth=58;
+ctx.beginPath();
+ctx.moveTo(235,382);
+ctx.lineTo(655,382);
+ctx.stroke();
+}
+
+if(tipRise){
+ctx.strokeStyle="#dc2626";
+ctx.lineWidth=54;
+ctx.beginPath();
+ctx.moveTo(760,360);
+ctx.lineTo(760,185);
+ctx.stroke();
+}
+
+ctx.restore();
+}
+
+function drawArrowHead(x,y,type,color){
+ctx.save();
+ctx.fillStyle=color;
+ctx.beginPath();
+if(type==="right"){ctx.moveTo(x,y);ctx.lineTo(x-18,y-12);ctx.lineTo(x-18,y+12);}
+if(type==="up"){ctx.moveTo(x,y);ctx.lineTo(x-10,y+18);ctx.lineTo(x+10,y+18);}
+ctx.closePath();
+ctx.fill();
+ctx.restore();
+}
+
+function drawArrows(s){
+const diff=pressureDiff();
+if(diff<8)return;
+ctx.save();
+ctx.lineCap="round";
+
+if(tipWind){
+ctx.strokeStyle="#2563eb";
+ctx.fillStyle="#2563eb";
+ctx.lineWidth=8;
+ctx.beginPath();
+ctx.moveTo(285,382);
+ctx.lineTo(645,382);
+ctx.stroke();
+drawArrowHead(645,382,"right","#2563eb");
+
+ctx.fillStyle="rgba(255,255,255,.88)";
+roundRect(385,350,125,26,8);
+ctx.fill();
+ctx.fillStyle="#111827";
+ctx.font="bold 14px system-ui";
+ctx.textAlign="center";
+ctx.fillText("Bodenwind",447,368);
+}
+
+if(tipRise){
+ctx.strokeStyle="#dc2626";
+ctx.fillStyle="#dc2626";
+ctx.lineWidth=7;
+ctx.beginPath();
+ctx.moveTo(765,354);
+ctx.lineTo(765,200);
+ctx.stroke();
+drawArrowHead(765,200,"up","#dc2626");
+
+ctx.fillStyle="rgba(255,255,255,.88)";
+roundRect(790,250,145,42,8);
+ctx.fill();
+ctx.fillStyle="#111827";
+ctx.font="bold 13px system-ui";
+ctx.textAlign="left";
+ctx.fillText("warme Luft",800,268);
+ctx.fillText("steigt auf",800,286);
+}
+
+ctx.restore();
+}
+
+function drawParticles(s){
+ctx.save();
+
+// Hintergrund und Vordergrund werden bewusst gleich gezeichnet.
+// Dadurch wirkt es wie ein einziges Gas: überall Luft, zusätzlich mit Nettostrom.
+for(const p of backgroundParticles){
+ctx.beginPath();
+ctx.fillStyle=p.x<s.mid?"#2563eb":"#f97316";
+ctx.globalAlpha=0.68;
+ctx.arc(p.x,p.y,1.85,0,Math.PI*2);
+ctx.fill();
+}
+
+for(const p of particles){
+ctx.beginPath();
+ctx.fillStyle=p.x<s.mid?"#2563eb":"#f97316";
+ctx.globalAlpha=0.68;
+ctx.arc(p.x,p.y,1.85,0,Math.PI*2);
+ctx.fill();
+}
+ctx.restore();
+}
+
+function drawBarometer(){
+const p=Math.round(localPressureAt(barometer.x,barometer.y));
+const parked=barometerRegion()==="geparkt";
+ctx.save();
+
+if(!parked){
+ctx.strokeStyle="rgba(17,24,39,.35)";
+ctx.lineWidth=2;
+ctx.setLineDash([5,5]);
+ctx.beginPath();
+ctx.moveTo(barometer.x,barometer.y);
+ctx.lineTo(barometer.x+54,barometer.y-42);
+ctx.stroke();
+ctx.setLineDash([]);
+}
+
+ctx.fillStyle="#ffffff";
+ctx.strokeStyle="#111827";
+ctx.lineWidth=3;
+ctx.beginPath();
+ctx.arc(barometer.x,barometer.y,barometer.r,0,Math.PI*2);
+ctx.fill();
+ctx.stroke();
+
+ctx.strokeStyle="#94a3b8";
+ctx.lineWidth=1;
+for(let i=0;i<7;i++){
+const a=-Math.PI*0.85+i*(Math.PI*0.7/6);
+ctx.beginPath();
+ctx.moveTo(barometer.x+13*Math.cos(a),barometer.y+13*Math.sin(a));
+ctx.lineTo(barometer.x+18*Math.cos(a),barometer.y+18*Math.sin(a));
+ctx.stroke();
+}
+
+ctx.strokeStyle="#dc2626";
+ctx.lineWidth=3;
+ctx.beginPath();
+ctx.moveTo(barometer.x,barometer.y);
+const angle=-Math.PI/2+(p-970)/65*Math.PI;
+ctx.lineTo(barometer.x+15*Math.cos(angle),barometer.y+15*Math.sin(angle));
+ctx.stroke();
+
+ctx.fillStyle="#111827";
+ctx.font="bold 12px system-ui";
+ctx.textAlign="center";
+ctx.fillText("Barometer",barometer.x,barometer.y+42);
+
+
+if(!parked){
+ctx.fillStyle="rgba(255,255,255,.94)";
+ctx.strokeStyle="#cbd5e1";
+ctx.lineWidth=1;
+roundRect(barometer.x+40,barometer.y-62,118,40,10);
+ctx.fill();
+ctx.stroke();
+
+ctx.fillStyle="#111827";
+ctx.font="bold 14px system-ui";
+ctx.textAlign="center";
+ctx.fillText(p+" hPa",barometer.x+99,barometer.y-39);
+}
+
+ctx.restore();
+}
+
+
+function drawThermometer(){
+const t=Math.round(localTemperatureAt(thermometer.x,thermometer.y));
+const parked=thermometerRegion()==="geparkt";
+
+ctx.save();
+
+ctx.fillStyle="#ffffff";
+ctx.strokeStyle="#111827";
+ctx.lineWidth=3;
+ctx.beginPath();
+ctx.arc(thermometer.x,thermometer.y,thermometer.r,0,Math.PI*2);
+ctx.fill();
+ctx.stroke();
+
+// Thermometer-Symbol
+ctx.strokeStyle="#dc2626";
+ctx.lineWidth=4;
+ctx.beginPath();
+ctx.moveTo(thermometer.x,thermometer.y-12);
+ctx.lineTo(thermometer.x,thermometer.y+8);
+ctx.stroke();
+ctx.fillStyle="#dc2626";
+ctx.beginPath();
+ctx.arc(thermometer.x,thermometer.y+10,6,0,Math.PI*2);
+ctx.fill();
+
+ctx.fillStyle="#111827";
+ctx.font="bold 12px system-ui";
+ctx.textAlign="center";
+ctx.fillText("Thermometer",thermometer.x,thermometer.y+42);
+
+if(!parked){
+  ctx.fillStyle="rgba(255,255,255,.94)";
+  ctx.strokeStyle="#cbd5e1";
+  ctx.lineWidth=1;
+  roundRect(thermometer.x+40,thermometer.y-62,118,40,10);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle="#111827";
+  ctx.font="bold 14px system-ui";
+  ctx.textAlign="center";
+  ctx.fillText(t+" °C",thermometer.x+99,thermometer.y-39);
+}
+
+ctx.restore();
+}
+
+function drawWindmesser(){
+const w=localWindAt(anemometer.x,anemometer.y);
+const parked=anemometerRegion()==="geparkt";
+
+ctx.save();
+
+ctx.fillStyle="#ffffff";
+ctx.strokeStyle="#111827";
+ctx.lineWidth=3;
+ctx.beginPath();
+ctx.arc(anemometer.x,anemometer.y,anemometer.r,0,Math.PI*2);
+ctx.fill();
+ctx.stroke();
+
+// Windmesser-Symbol: drei Schalen
+ctx.strokeStyle="#2563eb";
+ctx.lineWidth=2;
+ctx.beginPath();
+ctx.moveTo(anemometer.x,anemometer.y);
+ctx.lineTo(anemometer.x,anemometer.y-15);
+ctx.moveTo(anemometer.x,anemometer.y);
+ctx.lineTo(anemometer.x+13,anemometer.y+8);
+ctx.moveTo(anemometer.x,anemometer.y);
+ctx.lineTo(anemometer.x-13,anemometer.y+8);
+ctx.stroke();
+
+ctx.fillStyle="#2563eb";
+for(const a of [-Math.PI/2, Math.PI/6, Math.PI*5/6]){
+  ctx.beginPath();
+  ctx.arc(anemometer.x+15*Math.cos(a),anemometer.y+15*Math.sin(a),4,0,Math.PI*2);
+  ctx.fill();
+}
+
+ctx.fillStyle="#111827";
+ctx.font="bold 12px system-ui";
+ctx.textAlign="center";
+ctx.fillText("Windmesser",anemometer.x,anemometer.y+42);
+
+if(!parked){
+  ctx.fillStyle="rgba(255,255,255,.94)";
+  ctx.strokeStyle="#cbd5e1";
+  ctx.lineWidth=1;
+  roundRect(anemometer.x+40,anemometer.y-62,128,44,10);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle="#111827";
+  ctx.font="bold 13px system-ui";
+  ctx.textAlign="center";
+  ctx.fillText(Math.round(w.speed)+" km/h",anemometer.x+104,anemometer.y-43);
+  ctx.font="12px system-ui";
+  ctx.fillText("Richtung "+w.dir,anemometer.x+104,anemometer.y-27);
+}
+
+ctx.restore();
+}
+
+
+function drawExtraTips(){
+ctx.save();
+
+if(tip4){
+  ctx.fillStyle="rgba(255,255,255,0.92)";
+  roundRect(680,118,265,74,10);
+  ctx.fill();
+  ctx.strokeStyle="#cbd5e1";
+  ctx.lineWidth=1;
+  ctx.stroke();
+
+  ctx.fillStyle="#111827";
+  ctx.font="bold 13px system-ui";
+  ctx.textAlign="left";
+  ctx.fillText("Tipp 5",695,140);
+  ctx.font="13px system-ui";
+  ctx.fillText("Luft kühlt beim Aufsteigen ab.",695,160);
+  ctx.fillText("Wasserdampf kondensiert → Regen.",695,178);
+}
+
+if(tip5){
+  ctx.fillStyle="rgba(255,255,255,0.92)";
+  roundRect(300,372,410,118,10);
+  ctx.fill();
+  ctx.strokeStyle="#cbd5e1";
+  ctx.lineWidth=1;
+  ctx.stroke();
+
+  ctx.fillStyle="#111827";
+  ctx.font="bold 13px system-ui";
+  ctx.textAlign="left";
+  ctx.fillText("Tipp 8",315,398);
+
+  ctx.font="13px system-ui";
+  ctx.fillText("Wasser: c ≈ 4,2",315,426);
+  drawFractionUnit(430,416);
+  ctx.fillText("Boden:   c ≈ 1,2",315,470);
+  drawFractionUnit(430,460);
+}
+
+ctx.restore();
+}
+
+function drawFractionUnit(x,y){
+ctx.save();
+ctx.fillStyle="#111827";
+ctx.strokeStyle="#111827";
+ctx.lineWidth=1.2;
+ctx.font="12px system-ui";
+ctx.textAlign="center";
+
+// echter Bruch mit waagerechtem Bruchstrich
+ctx.fillText("kJ",x,y);
+ctx.beginPath();
+ctx.moveTo(x-25,y+5);
+ctx.lineTo(x+25,y+5);
+ctx.stroke();
+ctx.fillText("kg · K",x,y+20);
+
+ctx.restore();
+}
+
+function drawLabels(){
+// intentionally no labels
+}
+
+function updateReadouts(){
+const diff=pressureDiff();
+
+const pBaro=Math.round(localPressureAt(barometer.x,barometer.y));
+pLeftEl.textContent=pBaro+" hPa";
+pRightEl.textContent=barometerRegion();
+
+const temp=Math.round(localTemperatureAt(thermometer.x,thermometer.y));
+tempValueEl.textContent=temp+" °C";
+tempPlaceEl.textContent=thermometerRegion();
+
+const wind=localWindAt(anemometer.x,anemometer.y);
+windValueEl.textContent=Math.round(wind.speed)+" km/h";
+windPlaceEl.textContent=anemometerRegion();
+
+// Wetter im Landesinneren (rechts mittig)
+const inlandWeatherEl = document.getElementById("inlandWeather");
+if(inlandWeatherEl){
+  inlandWeatherEl.textContent = weatherLabel();
+}
+
+messageEl.textContent="Ziehe Barometer, Thermometer oder Windmesser aus der Ablage in die Simulation.";
+}
+
+function loop(){
+if(running){
+simAccumulator+=simSpeed;
+while(simAccumulator>=1){
+for(const p of backgroundParticles)moveBackgroundParticle(p);
+for(const p of particles)moveParticle(p);
+simAccumulator-=1;
+}
+}
+draw();
+requestAnimationFrame(loop);
+}
+
+pauseBtn.onclick=function(){
+running=!running;
+pauseBtn.textContent=running?"Pause":"Start";
+};
+resetBtn.onclick=reset;
+heatLandBtn.onclick=function(){heatSlider.value=Math.min(100,Number(heatSlider.value)+8);};
+coolLandBtn.onclick=function(){heatSlider.value=0;};
+heatSlider.oninput=function(){};
+simSpeedSlider.oninput=function(){
+simSpeed=Number(simSpeedSlider.value);
+simSpeedOut.textContent=simSpeed.toFixed(1)+"×";
+};
+
+function pointerPosition(evt){
+const rect=canvas.getBoundingClientRect();
+const clientX=evt.touches?evt.touches[0].clientX:evt.clientX;
+const clientY=evt.touches?evt.touches[0].clientY:evt.clientY;
+return {x:(clientX-rect.left)*canvas.width/rect.width,y:(clientY-rect.top)*canvas.height/rect.height};
+}
+
+function clampInstrument(inst){
+const s=scene();
+inst.x=Math.max(s.skyX+inst.r,Math.min(s.skyX+s.skyW+145-inst.r,inst.x));
+inst.y=Math.max(s.skyY+inst.r,Math.min(s.groundY-inst.r,inst.y));
+}
+
+function clampBarometer(){
+clampInstrument(barometer);
+}
+
+function startDrag(evt){
+const pos=pointerPosition(evt);
+
+const db=Math.hypot(pos.x-barometer.x,pos.y-barometer.y);
+const dt=Math.hypot(pos.x-thermometer.x,pos.y-thermometer.y);
+const da=Math.hypot(pos.x-anemometer.x,pos.y-anemometer.y);
+
+if(db<barometer.r+14){
+barometer.dragging=true;
+evt.preventDefault();
+return;
+}
+if(dt<thermometer.r+14){
+thermometer.dragging=true;
+evt.preventDefault();
+return;
+}
+if(da<anemometer.r+14){
+anemometer.dragging=true;
+evt.preventDefault();
+return;
+}
+}
+
+function drag(evt){
+if(!barometer.dragging && !thermometer.dragging && !anemometer.dragging)return;
+const pos=pointerPosition(evt);
+
+if(barometer.dragging){
+barometer.x=pos.x;
+barometer.y=pos.y;
+clampInstrument(barometer);
+}
+if(thermometer.dragging){
+thermometer.x=pos.x;
+thermometer.y=pos.y;
+clampInstrument(thermometer);
+}
+if(anemometer.dragging){
+anemometer.x=pos.x;
+anemometer.y=pos.y;
+clampInstrument(anemometer);
+}
+
+evt.preventDefault();
+}
+
+function endDrag(){
+barometer.dragging=false;
+thermometer.dragging=false;
+anemometer.dragging=false;
+}
+
+canvas.addEventListener("mousedown",startDrag);
+canvas.addEventListener("mousemove",drag);
+window.addEventListener("mouseup",endDrag);
+canvas.addEventListener("touchstart",startDrag,{passive:false});
+canvas.addEventListener("touchmove",drag,{passive:false});
+window.addEventListener("touchend",endDrag);
+
+
+function updateTipButtons(){
+showHeatBtn.style.opacity=tipHeat?"1":"0.65";
+showRiseBtn.style.opacity=tipRise?"1":"0.65";
+showWindBtn.style.opacity=tipWind?"1":"0.65";
+tip4Btn.style.opacity=tip4?"1":"0.65";
+if(tip5Btn){ tip5Btn.style.opacity=tip5?"1":"0.65"; }
+}
+
+showHeatBtn.onclick=function(){
+tipHeat=!tipHeat;
+updateTipButtons();
+};
+
+showRiseBtn.onclick=function(){
+tipRise=!tipRise;
+updateTipButtons();
+};
+
+showWindBtn.onclick=function(){
+tipWind=!tipWind;
+updateTipButtons();
+};
+
+tip4Btn.onclick=function(){
+tip4=!tip4;
+updateTipButtons();
+};
+
+if(tip5Btn){
+tip5Btn.onclick=function(){
+tip5=!tip5;
+updateTipButtons();
+};
+}
+
+hideHintsBtn.onclick=function(){
+tipHeat=false;
+tipRise=false;
+tipWind=false;
+tip4=false;
+tip5=false;
+updateTipButtons();
+};
+
+updateTipButtons();
+
+reset();
+loop();
+</script>
+</body>
+</html>
